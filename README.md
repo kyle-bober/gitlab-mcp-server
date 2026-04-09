@@ -92,7 +92,7 @@ The server reads configuration from two environment variables:
 
 | Variable | Description | Example |
 |---|---|---|
-| `GITLAB_URL` | Base URL of the GitLab API (v4) | `https://gitlab.spectrumflow.net/api/v4` |
+| `GITLAB_URL` | Base URL of the GitLab API (v4) | `https://gitlab.example.com/api/v4` |
 | `GITLAB_TOKEN` | GitLab Personal Access Token with required scopes (see below) | `glpat-xxxxxxxxxxxxxxxxxxxx` |
 
 **Required PAT scopes:** `read_user`, `read_api`, `read_repository`, `read_registry`, `read_virtual_registry`
@@ -100,7 +100,7 @@ The server reads configuration from two environment variables:
 Export them before starting the server:
 
 ```bash
-export GITLAB_URL=https://gitlab.spectrumflow.net/api/v4
+export GITLAB_URL=https://gitlab.example.com/api/v4
 export GITLAB_TOKEN=your-personal-access-token
 ```
 
@@ -168,7 +168,7 @@ Add to your `mcp.json`:
       "type": "stdio",
       "command": "/path/to/gitlab-mcp-server/start_server.sh",
       "env": {
-        "GITLAB_URL": "https://gitlab.spectrumflow.net/api/v4",
+        "GITLAB_URL": "https://gitlab.example.com/api/v4",
         "GITLAB_TOKEN": "your-personal-access-token"
       }
     }
