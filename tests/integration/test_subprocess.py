@@ -134,16 +134,24 @@ class TestToolsList:
         lines, _, _ = _send_and_collect(input_text=_TOOLS_LIST_MSG + "\n")
         assert "tools" in lines[0]["result"]
 
-    def test_returns_all_three_tools(self):
+    def test_returns_all_tools(self):
         lines, _, _ = _send_and_collect(input_text=_TOOLS_LIST_MSG + "\n")
         names = {t["name"] for t in lines[0]["result"]["tools"]}
-        assert names == {"list_merge_requests", "list_issues", "list_pipelines"}
+        assert names == {
+            "list_merge_requests", "list_issues", "list_pipelines",
+            "get_current_user",
+            "list_projects", "get_project", "list_groups", "list_project_members", "list_releases",
+            "get_merge_request", "list_merge_request_notes",
+            "get_pipeline", "list_pipeline_jobs",
+            "list_branches", "list_tags", "list_commits", "get_file", "list_repository_tree", "compare_refs",
+            "list_registry_repositories", "list_registry_tags",
+            "list_packages",
+        }
 
-    def test_each_tool_has_input_schema_with_project(self):
+    def test_each_tool_has_input_schema(self):
         lines, _, _ = _send_and_collect(input_text=_TOOLS_LIST_MSG + "\n")
         for tool in lines[0]["result"]["tools"]:
             assert "inputSchema" in tool
-            assert "project" in tool["inputSchema"]["properties"]
 
 
 # ---------------------------------------------------------------------------

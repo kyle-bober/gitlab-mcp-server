@@ -252,3 +252,573 @@ class TestListPipelines:
             result = mcp_server.list_pipelines("proj")
 
         assert [r["status"] for r in result] == statuses
+
+
+# ---------------------------------------------------------------------------
+# get_current_user
+# ---------------------------------------------------------------------------
+
+class TestGetCurrentUser:
+    def test_returns_user_fields(self):
+        gitlab_response = {"id": 42, "username": "kyle", "name": "Kyle Bober", "email": "kyle@example.com"}
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.get_current_user()
+        assert result == {"id": 42, "username": "kyle", "name": "Kyle Bober", "email": "kyle@example.com"}
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response(
+            {"id": 1, "username": "u", "name": "n"}
+        )) as mock_get:
+            mcp_server.get_current_user()
+        mock_get.assert_called_once_with(f"{mcp_server.GITLAB_URL}/user", headers=mcp_server.HEADERS)
+
+    def test_email_defaults_to_empty_string_when_absent(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response({"id": 1, "username": "u", "name": "n"})):
+            result = mcp_server.get_current_user()
+        assert result["email"] == ""
+
+    def test_raises_http_error_on_401(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(401)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.get_current_user()
+
+
+# ---------------------------------------------------------------------------
+# list_projects
+# ---------------------------------------------------------------------------
+
+class TestListProjects:
+    def test_returns_id_name_path(self):
+        gitlab_response = [{"id": 1, "name": "My Repo", "path_with_namespace": "group/my-repo"}]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_projects()
+        assert result == [{"id": 1, "name": "My Repo", "path_with_namespace": "group/my-repo"}]
+
+    def test_always_includes_membership_filter(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_projects()
+        assert "membership=true" in mock_get.call_args[0][0]
+
+    def test_appends_search_when_provided(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_projects(search="ndle")
+        assert "search=ndle" in mock_get.call_args[0][0]
+
+    def test_no_search_param_when_omitted(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_projects()
+        assert "search=" not in mock_get.call_args[0][0]
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_projects() == []
+
+    def test_raises_http_error_on_403(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(403)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.list_projects()
+
+
+# ---------------------------------------------------------------------------
+# get_project
+# ---------------------------------------------------------------------------
+
+class TestGetProject:
+    def test_returns_project_fields(self):
+        gitlab_response = {
+            "id": 99, "name": "Repo", "path_with_namespace": "grp/repo",
+            "description": "A repo", "default_branch": "main",
+            "visibility": "private", "web_url": "https://gl.example.com/grp/repo",
+        }
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.get_project("99")
+        assert result["id"] == 99
+        assert result["default_branch"] == "main"
+        assert result["visibility"] == "private"
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response({
+            "id": 1, "name": "r", "path_with_namespace": "g/r"
+        })) as mock_get:
+            mcp_server.get_project("my-project")
+        mock_get.assert_called_once_with(
+            f"{mcp_server.GITLAB_URL}/projects/my-project", headers=mcp_server.HEADERS
+        )
+
+    def test_raises_http_error_on_404(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(404)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.get_project("nonexistent")
+
+
+# ---------------------------------------------------------------------------
+# list_groups
+# ---------------------------------------------------------------------------
+
+class TestListGroups:
+    def test_returns_id_name_full_path(self):
+        gitlab_response = [{"id": 10, "name": "NDLE", "full_path": "charter/ndle"}]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_groups()
+        assert result == [{"id": 10, "name": "NDLE", "full_path": "charter/ndle"}]
+
+    def test_includes_min_access_level_filter(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_groups()
+        assert "min_access_level=10" in mock_get.call_args[0][0]
+
+    def test_appends_search_when_provided(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_groups(search="ndle")
+        assert "search=ndle" in mock_get.call_args[0][0]
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_groups() == []
+
+
+# ---------------------------------------------------------------------------
+# list_project_members
+# ---------------------------------------------------------------------------
+
+class TestListProjectMembers:
+    def test_returns_member_fields(self):
+        gitlab_response = [{"id": 1, "username": "kyle", "name": "Kyle", "access_level": 50}]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_project_members("proj")
+        assert result == [{"id": 1, "username": "kyle", "name": "Kyle", "access_level": 50}]
+
+    def test_calls_members_all_endpoint(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_project_members("123")
+        assert mock_get.call_args[0][0].endswith("/members/all")
+
+    def test_raises_http_error_on_404(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(404)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.list_project_members("missing")
+
+
+# ---------------------------------------------------------------------------
+# list_releases
+# ---------------------------------------------------------------------------
+
+class TestListReleases:
+    def test_returns_tag_name_and_name(self):
+        gitlab_response = [{"tag_name": "v1.0.0", "name": "Release 1.0", "released_at": "2025-01-01"}]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_releases("proj")
+        assert result == [{"tag_name": "v1.0.0", "name": "Release 1.0", "released_at": "2025-01-01"}]
+
+    def test_released_at_is_none_when_absent(self):
+        gitlab_response = [{"tag_name": "v2.0.0", "name": "v2"}]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_releases("proj")
+        assert result[0]["released_at"] is None
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_releases("proj") == []
+
+
+# ---------------------------------------------------------------------------
+# get_merge_request
+# ---------------------------------------------------------------------------
+
+class TestGetMergeRequest:
+    def test_returns_mr_details(self):
+        gitlab_response = {
+            "iid": 5, "title": "Fix bug", "description": "details",
+            "state": "opened", "author": {"username": "kyle"},
+            "source_branch": "fix/bug", "target_branch": "main",
+            "labels": ["bug"], "web_url": "https://gl.example.com/mr/5",
+        }
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.get_merge_request("proj", 5)
+        assert result["iid"] == 5
+        assert result["author"] == "kyle"
+        assert result["labels"] == ["bug"]
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response({
+            "iid": 1, "title": "t", "state": "opened"
+        })) as mock_get:
+            mcp_server.get_merge_request("my-proj", 1)
+        assert mock_get.call_args[0][0].endswith("/merge_requests/1")
+
+    def test_raises_http_error_on_404(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(404)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.get_merge_request("proj", 999)
+
+
+# ---------------------------------------------------------------------------
+# list_merge_request_notes
+# ---------------------------------------------------------------------------
+
+class TestListMergeRequestNotes:
+    def test_returns_note_fields(self):
+        gitlab_response = [{"id": 1, "author": {"username": "alice"}, "body": "LGTM"}]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_merge_request_notes("proj", 3)
+        assert result == [{"id": 1, "author": "alice", "body": "LGTM"}]
+
+    def test_author_is_none_when_author_missing(self):
+        gitlab_response = [{"id": 2, "body": "system note"}]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_merge_request_notes("proj", 3)
+        assert result[0]["author"] is None
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_merge_request_notes("proj", 1) == []
+
+
+# ---------------------------------------------------------------------------
+# get_pipeline
+# ---------------------------------------------------------------------------
+
+class TestGetPipeline:
+    def test_returns_pipeline_fields(self):
+        gitlab_response = {
+            "id": 100, "status": "success", "ref": "main", "sha": "abc123",
+            "web_url": "https://gl.example.com/pipelines/100",
+            "created_at": "2025-01-01T00:00:00Z", "updated_at": "2025-01-01T01:00:00Z",
+        }
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.get_pipeline("proj", 100)
+        assert result["id"] == 100
+        assert result["sha"] == "abc123"
+        assert result["created_at"] == "2025-01-01T00:00:00Z"
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response({
+            "id": 5, "status": "running", "ref": "main"
+        })) as mock_get:
+            mcp_server.get_pipeline("my-proj", 5)
+        assert mock_get.call_args[0][0].endswith("/pipelines/5")
+
+    def test_raises_http_error_on_404(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(404)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.get_pipeline("proj", 9999)
+
+
+# ---------------------------------------------------------------------------
+# list_pipeline_jobs
+# ---------------------------------------------------------------------------
+
+class TestListPipelineJobs:
+    def test_returns_job_fields(self):
+        gitlab_response = [
+            {"id": 1, "name": "build", "status": "success", "stage": "build",
+             "web_url": "https://gl.example.com/jobs/1"},
+        ]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_pipeline_jobs("proj", 10)
+        assert result == [{"id": 1, "name": "build", "status": "success", "stage": "build",
+                           "web_url": "https://gl.example.com/jobs/1"}]
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_pipeline_jobs("my-proj", 42)
+        assert mock_get.call_args[0][0].endswith("/pipelines/42/jobs")
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_pipeline_jobs("proj", 1) == []
+
+
+# ---------------------------------------------------------------------------
+# list_branches
+# ---------------------------------------------------------------------------
+
+class TestListBranches:
+    def test_returns_branch_fields(self):
+        gitlab_response = [
+            {"name": "main", "merged": False, "protected": True},
+            {"name": "develop", "merged": False, "protected": False},
+        ]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_branches("proj")
+        assert result == [
+            {"name": "main", "merged": False, "protected": True},
+            {"name": "develop", "merged": False, "protected": False},
+        ]
+
+    def test_defaults_merged_and_protected_to_false(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([{"name": "feat"}])):
+            result = mcp_server.list_branches("proj")
+        assert result[0]["merged"] is False
+        assert result[0]["protected"] is False
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_branches("proj") == []
+
+    def test_raises_http_error_on_404(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(404)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.list_branches("missing")
+
+
+# ---------------------------------------------------------------------------
+# list_tags
+# ---------------------------------------------------------------------------
+
+class TestListTags:
+    def test_returns_tag_fields(self):
+        gitlab_response = [
+            {"name": "v1.0.0", "message": "Release 1.0", "commit": {"id": "abc123"}},
+        ]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_tags("proj")
+        assert result == [{"name": "v1.0.0", "message": "Release 1.0", "commit": "abc123"}]
+
+    def test_commit_is_none_when_absent(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([{"name": "v2.0"}])):
+            result = mcp_server.list_tags("proj")
+        assert result[0]["commit"] is None
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_tags("proj") == []
+
+
+# ---------------------------------------------------------------------------
+# list_commits
+# ---------------------------------------------------------------------------
+
+class TestListCommits:
+    def test_returns_commit_fields(self):
+        gitlab_response = [{
+            "id": "abc123def", "short_id": "abc123", "title": "Fix bug",
+            "author_name": "Kyle", "created_at": "2025-01-01T00:00:00Z",
+        }]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_commits("proj")
+        assert result[0]["short_id"] == "abc123"
+        assert result[0]["author_name"] == "Kyle"
+
+    def test_calls_url_without_ref_when_omitted(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_commits("proj")
+        url = mock_get.call_args[0][0]
+        assert url.endswith("/commits")
+
+    def test_appends_ref_name_when_provided(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_commits("proj", ref_name="develop")
+        assert "ref_name=develop" in mock_get.call_args[0][0]
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_commits("proj") == []
+
+
+# ---------------------------------------------------------------------------
+# get_file
+# ---------------------------------------------------------------------------
+
+class TestGetFile:
+    def test_decodes_base64_content(self):
+        import base64
+        content = "hello world"
+        encoded = base64.b64encode(content.encode()).decode()
+        gitlab_response = {"file_path": "README.md", "ref": "main", "encoding": "base64", "content": encoded}
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.get_file("proj", "README.md")
+        assert result["content"] == content
+        assert result["file_path"] == "README.md"
+
+    def test_url_encodes_slash_in_file_path(self):
+        import base64
+        with patch("mcp_server.requests.get", return_value=_mock_response({
+            "file_path": "src/main.py", "ref": "main", "encoding": "base64",
+            "content": base64.b64encode(b"x").decode(),
+        })) as mock_get:
+            mcp_server.get_file("proj", "src/main.py")
+        assert "src%2Fmain.py" in mock_get.call_args[0][0]
+
+    def test_uses_head_as_default_ref(self):
+        import base64
+        with patch("mcp_server.requests.get", return_value=_mock_response({
+            "file_path": "f.txt", "ref": "HEAD", "encoding": "base64",
+            "content": base64.b64encode(b"t").decode(),
+        })) as mock_get:
+            mcp_server.get_file("proj", "f.txt")
+        assert "ref=HEAD" in mock_get.call_args[0][0]
+
+    def test_uses_custom_ref(self):
+        import base64
+        with patch("mcp_server.requests.get", return_value=_mock_response({
+            "file_path": "f.txt", "ref": "develop", "encoding": "base64",
+            "content": base64.b64encode(b"t").decode(),
+        })) as mock_get:
+            mcp_server.get_file("proj", "f.txt", ref="develop")
+        assert "ref=develop" in mock_get.call_args[0][0]
+
+    def test_raises_http_error_on_404(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(404)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.get_file("proj", "missing.txt")
+
+
+# ---------------------------------------------------------------------------
+# list_repository_tree
+# ---------------------------------------------------------------------------
+
+class TestListRepositoryTree:
+    def test_returns_tree_items(self):
+        gitlab_response = [
+            {"id": "abc", "name": "src", "type": "tree", "path": "src"},
+            {"id": "def", "name": "README.md", "type": "blob", "path": "README.md"},
+        ]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_repository_tree("proj")
+        assert len(result) == 2
+        assert result[0]["type"] == "tree"
+        assert result[1]["type"] == "blob"
+
+    def test_calls_url_without_params_when_none_provided(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_repository_tree("proj")
+        url = mock_get.call_args[0][0]
+        assert url.endswith("/repository/tree")
+
+    def test_appends_path_when_provided(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_repository_tree("proj", path="src")
+        assert "path=src" in mock_get.call_args[0][0]
+
+    def test_appends_ref_when_provided(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_repository_tree("proj", ref="develop")
+        assert "ref=develop" in mock_get.call_args[0][0]
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_repository_tree("proj") == []
+
+
+# ---------------------------------------------------------------------------
+# compare_refs
+# ---------------------------------------------------------------------------
+
+class TestCompareRefs:
+    def test_returns_comparison_summary(self):
+        gitlab_response = {
+            "commit": {"id": "abc123"},
+            "commits": [{"id": "abc123", "title": "Fix bug"}],
+            "diffs": [{"old_path": "a.py", "new_path": "a.py"}],
+            "compare_same_ref": False,
+        }
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.compare_refs("proj", "main", "feature")
+        assert result["commit"] == "abc123"
+        assert result["diffs_count"] == 1
+        assert result["compare_same_ref"] is False
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response({
+            "commit": None, "commits": [], "diffs": [], "compare_same_ref": False
+        })) as mock_get:
+            mcp_server.compare_refs("proj", "main", "develop")
+        url = mock_get.call_args[0][0]
+        assert "from=main" in url
+        assert "to=develop" in url
+
+    def test_handles_empty_diffs(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response({
+            "commit": None, "commits": [], "diffs": [], "compare_same_ref": True
+        })):
+            result = mcp_server.compare_refs("proj", "main", "main")
+        assert result["diffs_count"] == 0
+        assert result["compare_same_ref"] is True
+
+
+# ---------------------------------------------------------------------------
+# list_registry_repositories
+# ---------------------------------------------------------------------------
+
+class TestListRegistryRepositories:
+    def test_returns_repository_fields(self):
+        gitlab_response = [
+            {"id": 1, "name": "my-image", "path": "group/proj/my-image",
+             "location": "registry.example.com/group/proj/my-image"},
+        ]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_registry_repositories("proj")
+        assert result[0]["id"] == 1
+        assert result[0]["name"] == "my-image"
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_registry_repositories("123")
+        assert mock_get.call_args[0][0].endswith("/registry/repositories")
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_registry_repositories("proj") == []
+
+    def test_raises_http_error_on_404(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(404)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.list_registry_repositories("missing")
+
+
+# ---------------------------------------------------------------------------
+# list_registry_tags
+# ---------------------------------------------------------------------------
+
+class TestListRegistryTags:
+    def test_returns_tag_fields(self):
+        gitlab_response = [
+            {"name": "latest", "path": "group/proj/img:latest", "location": "registry.example.com/img:latest"},
+        ]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_registry_tags("proj", 7)
+        assert result == [{"name": "latest", "path": "group/proj/img:latest",
+                           "location": "registry.example.com/img:latest"}]
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_registry_tags("my-proj", 42)
+        assert mock_get.call_args[0][0].endswith("/registry/repositories/42/tags")
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_registry_tags("proj", 1) == []
+
+
+# ---------------------------------------------------------------------------
+# list_packages
+# ---------------------------------------------------------------------------
+
+class TestListPackages:
+    def test_returns_package_fields(self):
+        gitlab_response = [
+            {"id": 1, "name": "ndle-common", "version": "0.0.1", "package_type": "pypi"},
+        ]
+        with patch("mcp_server.requests.get", return_value=_mock_response(gitlab_response)):
+            result = mcp_server.list_packages("proj")
+        assert result == [{"id": 1, "name": "ndle-common", "version": "0.0.1", "package_type": "pypi"}]
+
+    def test_calls_correct_url(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])) as mock_get:
+            mcp_server.list_packages("123")
+        assert mock_get.call_args[0][0].endswith("/packages")
+
+    def test_version_is_none_when_absent(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([{"id": 2, "name": "pkg", "package_type": "npm"}])):
+            result = mcp_server.list_packages("proj")
+        assert result[0]["version"] is None
+
+    def test_returns_empty_list(self):
+        with patch("mcp_server.requests.get", return_value=_mock_response([])):
+            assert mcp_server.list_packages("proj") == []
+
+    def test_raises_http_error_on_404(self):
+        with patch("mcp_server.requests.get", return_value=_http_error_response(404)):
+            with pytest.raises(requests.HTTPError):
+                mcp_server.list_packages("missing")

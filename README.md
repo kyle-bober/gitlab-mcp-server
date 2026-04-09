@@ -4,11 +4,67 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that e
 
 ## Tools
 
+### User (`read_user`)
+
 | Tool | Description | Parameters |
 |---|---|---|
-| `list_merge_requests` | List open merge requests in a GitLab project | `project` (string) |
-| `list_issues` | List issues in a GitLab project | `project` (string) |
-| `list_pipelines` | List recent pipelines in a GitLab project | `project` (string) |
+| `get_current_user` | Get the authenticated user's profile | *(none)* |
+
+### Projects & Groups (`read_api`)
+
+| Tool | Description | Parameters |
+|---|---|---|
+| `list_projects` | List projects the authenticated user is a member of | `search` (optional) |
+| `get_project` | Get details of a specific project | `project` |
+| `list_groups` | List groups the authenticated user has access to | `search` (optional) |
+| `list_project_members` | List all members of a project (including inherited) | `project` |
+| `list_releases` | List releases for a project | `project` |
+
+### Merge Requests (`read_api`)
+
+| Tool | Description | Parameters |
+|---|---|---|
+| `list_merge_requests` | List open merge requests in a project | `project` |
+| `get_merge_request` | Get full details of a specific merge request | `project`, `iid` |
+| `list_merge_request_notes` | List comments/notes on a merge request | `project`, `iid` |
+
+### Issues (`read_api`)
+
+| Tool | Description | Parameters |
+|---|---|---|
+| `list_issues` | List issues in a project | `project` |
+
+### Pipelines & Jobs (`read_api`)
+
+| Tool | Description | Parameters |
+|---|---|---|
+| `list_pipelines` | List recent pipelines in a project | `project` |
+| `get_pipeline` | Get details of a specific pipeline | `project`, `pipeline_id` |
+| `list_pipeline_jobs` | List jobs in a specific pipeline | `project`, `pipeline_id` |
+
+### Repository (`read_repository`)
+
+| Tool | Description | Parameters |
+|---|---|---|
+| `list_branches` | List branches in a project repository | `project` |
+| `list_tags` | List tags in a project repository | `project` |
+| `list_commits` | List commits, optionally filtered by branch/tag | `project`, `ref_name` (optional) |
+| `get_file` | Get the decoded content of a file | `project`, `file_path`, `ref` (optional, default: `HEAD`) |
+| `list_repository_tree` | List files and directories at a given path | `project`, `path` (optional), `ref` (optional) |
+| `compare_refs` | Compare two branches/tags/commits and return a diff summary | `project`, `from_ref`, `to_ref` |
+
+### Container Registry (`read_registry`)
+
+| Tool | Description | Parameters |
+|---|---|---|
+| `list_registry_repositories` | List container registry repositories for a project | `project` |
+| `list_registry_tags` | List tags for a specific registry repository | `project`, `repository_id` |
+
+### Package Registry (`read_virtual_registry`)
+
+| Tool | Description | Parameters |
+|---|---|---|
+| `list_packages` | List packages in the project package registry | `project` |
 
 The `project` parameter accepts a GitLab project ID (integer) or URL-encoded namespace/path (e.g., `mygroup%2Fmyrepo`).
 
@@ -37,7 +93,9 @@ The server reads configuration from two environment variables:
 | Variable | Description | Example |
 |---|---|---|
 | `GITLAB_URL` | Base URL of the GitLab API (v4) | `https://gitlab.spectrumflow.net/api/v4` |
-| `GITLAB_TOKEN` | GitLab Personal Access Token with `api` scope | `glpat-xxxxxxxxxxxxxxxxxxxx` |
+| `GITLAB_TOKEN` | GitLab Personal Access Token with required scopes (see below) | `glpat-xxxxxxxxxxxxxxxxxxxx` |
+
+**Required PAT scopes:** `read_user`, `read_api`, `read_repository`, `read_registry`, `read_virtual_registry`
 
 Export them before starting the server:
 
@@ -91,10 +149,10 @@ The server implements the [Model Context Protocol (MCP)](https://spec.modelconte
 {"jsonrpc": "2.0", "id": 3, "result": {"content": [{"type": "text", "text": "[{\"id\": 42, \"title\": \"Fix bug\"}]"}]}}
 ```
 
-**Error response (e.g. missing parameter):**
+**Error response (e.g. invalid or missing parameter):**
 
 ```json
-{"jsonrpc": "2.0", "id": 3, "error": {"code": -32602, "message": "Missing required argument: 'project'"}}
+{"jsonrpc": "2.0", "id": 3, "error": {"code": -32602, "message": "Invalid arguments: ..."}}
 ```
 
 GitLab API failures are returned as results with `"isError": true` rather than JSON-RPC errors, per the MCP specification.
@@ -120,7 +178,7 @@ Add to your `mcp.json`:
 
 ## Testing
 
-The test suite has 58 tests across three layers. No network calls are made — all GitLab HTTP interactions are mocked.
+The test suite has 152 tests across three layers. No network calls are made — all GitLab HTTP interactions are mocked.
 
 ```bash
 python -m pytest
@@ -128,7 +186,7 @@ python -m pytest
 
 | Layer | File | What it tests |
 |---|---|---|
-| Unit | `tests/unit/test_tools.py` | Tool functions (`list_merge_requests`, `list_issues`, `list_pipelines`) and `send_response` in isolation with mocked `requests.get` |
+| Unit | `tests/unit/test_tools.py` | All 22 tool functions and `send`/`send_result`/`send_error` helpers in isolation with mocked `requests.get` |
 | Integration (in-process) | `tests/integration/test_main_loop.py` | `main()` dispatch loop via injected `sys.stdin` — routing, error handling, resilience after failures |
 | Integration (subprocess) | `tests/integration/test_subprocess.py` | Real process spawned via `subprocess.Popen` — env var validation, tool discovery over the wire, wire protocol error paths |
 

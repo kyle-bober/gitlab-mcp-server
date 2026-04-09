@@ -99,11 +99,20 @@ class TestToolsList:
         outputs = _run_main(req, capsys=capsys)
         assert "tools" in outputs[0]["result"]
 
-    def test_returns_all_three_tools(self, capsys):
+    def test_returns_all_tools(self, capsys):
         req = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
         outputs = _run_main(req, capsys=capsys)
         names = {t["name"] for t in outputs[0]["result"]["tools"]}
-        assert names == {"list_merge_requests", "list_issues", "list_pipelines"}
+        assert names == {
+            "list_merge_requests", "list_issues", "list_pipelines",
+            "get_current_user",
+            "list_projects", "get_project", "list_groups", "list_project_members", "list_releases",
+            "get_merge_request", "list_merge_request_notes",
+            "get_pipeline", "list_pipeline_jobs",
+            "list_branches", "list_tags", "list_commits", "get_file", "list_repository_tree", "compare_refs",
+            "list_registry_repositories", "list_registry_tags",
+            "list_packages",
+        }
 
     def test_each_tool_has_input_schema(self, capsys):
         req = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
@@ -111,8 +120,6 @@ class TestToolsList:
         for tool in outputs[0]["result"]["tools"]:
             assert "inputSchema" in tool
             assert tool["inputSchema"]["type"] == "object"
-            assert "project" in tool["inputSchema"]["properties"]
-            assert "project" in tool["inputSchema"]["required"]
 
     def test_echoes_request_id(self, capsys):
         req = {"jsonrpc": "2.0", "id": 99, "method": "tools/list"}
@@ -129,7 +136,7 @@ class TestToolsCallRouting:
         mr_data = [{"id": 1, "title": "MR One"}]
         with patch("mcp_server.list_merge_requests", return_value=mr_data) as mock_fn:
             outputs = _run_main(_call_request("list_merge_requests", "42"), capsys=capsys)
-            mock_fn.assert_called_once_with("42")
+            mock_fn.assert_called_once_with(project="42")
 
         assert json.loads(outputs[0]["result"]["content"][0]["text"]) == mr_data
 
@@ -137,7 +144,7 @@ class TestToolsCallRouting:
         issue_data = [{"id": 10, "title": "A bug"}]
         with patch("mcp_server.list_issues", return_value=issue_data) as mock_fn:
             outputs = _run_main(_call_request("list_issues", "7"), capsys=capsys)
-            mock_fn.assert_called_once_with("7")
+            mock_fn.assert_called_once_with(project="7")
 
         assert json.loads(outputs[0]["result"]["content"][0]["text"]) == issue_data
 
@@ -145,7 +152,7 @@ class TestToolsCallRouting:
         pipeline_data = [{"id": 100, "status": "success", "ref": "main"}]
         with patch("mcp_server.list_pipelines", return_value=pipeline_data) as mock_fn:
             outputs = _run_main(_call_request("list_pipelines", "5"), capsys=capsys)
-            mock_fn.assert_called_once_with("5")
+            mock_fn.assert_called_once_with(project="5")
 
         assert json.loads(outputs[0]["result"]["content"][0]["text"]) == pipeline_data
 
